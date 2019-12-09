@@ -1,0 +1,447 @@
+---
+title: .Rproj considered harmful
+author:
+- "[Tarak Shah](https://hrdag.org/people/tarak-shah/)"
+date: 9 December 2019
+output:
+    html_document:
+        toc: true
+---
+
+Note: some of the advice in this post echoes that of Jenny Bryan in [this
+excellent article](https://www.tidyverse.org/blog/2017/12/workflow-vs-script/).
+One difference is that we treat each discrete task as a self-contained piece,
+whereas she treats the entire project as one unit.
+
+Members of our team prefer to code in different languages. This post is written
+from the perspective of a (primarily) R user on a multilingual team.
+
+# Background
+
+At HRDAG, we organize projects as collections of [self-contained
+tasks](https://hrdag.org/2016/06/14/the-task-is-a-quantum-of-workflow/) to be
+performed in order, together constituting a data analysis pipeline. For
+instance, a project structure might look like this:
+
+```
+.
+├── import
+│   ├── Makefile
+│   ├── input
+│   ├── output
+│   └── src
+├── clean
+│   ├── Makefile
+│   ├── input
+│   ├── output
+│   └── src
+├── model
+│   ├── Makefile
+│   ├── input
+│   ├── output
+│   └── src
+└── write
+    ├── Makefile
+    ├── input
+    ├── output
+    └── src
+```
+
+Each task is its own little mini-project, with information about dependencies
+and instructions for producing output recorded in the Makefile.  Project
+structures may become more complicated as tasks come to depend on multiple
+upstream tasks as inputs, or are broken up into discrete sub-tasks, and so on.
+
+This project style, largely developed by [Scott
+Weikart](https://hrdag.org/people/scott-weikart-phd/) and [Jeff
+Klingner](https://hrdag.org/people/jeff-klingner-phd/), is not only
+self-documenting and easy to maintain, it also facilitates collaboration for us.
+We are a multilingual shop, with much of our code pretty evenly split between R
+and Python, along with a dollop of bash and smatterings of Julia, SQL, C,
+markdown languages, and various others. With tasks split this way, someone
+developing a downstream task can update the upstream tasks without even having
+to know what language they are written in, just by running `make`. For more on
+our project structure, see Patrick Ball's blogpost [The task is a quantum of
+workflow](https://hrdag.org/2016/06/14/the-task-is-a-quantum-of-workflow/).
+
+For more on the usefulness of Makefiles in data analysis projects, see [this
+post](https://bost.ocks.org/mike/make/) from Mike Bostock.
+
+Two of our highest priorities when organizing project code are for the code to
+be:
+
+1. Reproducible: Given the original input data, anyone should be able to pick up
+   the project and re-create the output (whether that is a written report, some
+   charts, a new data set, or what have you).
+2. Auditable: If anything in the output looks surprising or seems wrong, I
+   should be able to trace that output back through every transformation and
+   modeling choice, to see exactly how the original input data resulted in that
+   output.
+
+# Definitions
+
+We should start by [defining our
+terms](https://mathenchant.wordpress.com/2019/11/30/let-us-define-our-terms)
+
+The definitions of *reproducibility* and *auditability* will vary depending on
+context. For us, at a minimum, we'd like to make sure that project can be run on
+our in-house Linux server via its Makefiles -- e.g.  `cd import && make`, etc.
+Given that we often develop code in an interactive way via a
+[REPL](https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop) or a
+[Jupyter notebook](https://jupyter.org/), this post will focus on some of the
+ways that code developed interactively, and meant as a prototype, falls short of
+being fully reproducible and auditable.
+
+## Prototyping code vs. Production code
+
+For HRDAG, *production* does not mean that code will be rolled out to millions
+of users. Rather, production code is code that we can stand behind, having
+assured ourselves through unit tests and several rounds of editing that results
+and conclusions are rigorously defensible.
+
+As stated above, a concrete definition for "production" for us can be whether
+the code can be run on our in-house Linux server via its Makefiles. If that
+represents the letter of the law, then the spirit can be captured by the concept
+of empathy for the person tasked with reproducing or auditing the code. This
+empathy is valuble to cultivate because, if for no other reason, the person
+tasked with reproducing or auditing your code is often your future self.
+
+# Common issues when moving from prototyping to production
+
+## 1. The working directory thing
+
+Whenever code reads in some data from disk, or writes anything out to disk, we
+face a reproducibility-related challenge: 
+
+1. Code that relies on a relative filename and works in an interactive session,
+   such as `read.csv("mydata.csv")`, depends on what the working directory is at
+   the time it is run. That working directory may be set automatically based on
+   how the R session was initiated, meaning that you can run the exact same code
+   on the exact same machine with the only difference being where you started
+   your R session, and sometimes it will produce the correct output and
+   sometimes it won't, which fails any reasonable definition of reproducibility.
+   Or alternatively it might be set explicitly using `setwd`, which is not only
+   inelegant, but also runs into problem (2).
+
+2. Code that relies on an absolute filename, such as
+   `read.csv("/Users/tshah/projects/myproject/import/input/mydata.csv")`,
+   depends on where the project happens to be on my machine. If I share the
+   project with anyone else, that code that works for me will result in a "No
+   such file or directory" error for anyone else, again failing most definitions
+   of reproducibility.
+
+Many RStudio users have taken to the .Rproj solution -- share the project
+including the .Rproj file, and then as long as anyone wanting to run the script
+does so by opening the .Rproj file (which starts RStudio and sets the working
+directory to the location of the .Rproj file), everything should work. In our
+case, since each task is its own self-contained project, perhaps we can extend
+that practice, and have an RStudio project replete with .Rproj file for every
+task?
+
+But that approach doesn't really solve our problem. First of all, it's specific
+to R. Recall that different tasks, or even bits of code within tasks, may be
+written in a number of different languages. Furthermore, given that our own
+definition of reproducibility included being able to run the task via `make`, we
+haven't met our standard for reproducibility. In fact, this solution *makes
+RStudio a project dependency*. That is a high cost to pay, especially since, as
+mentioned above, the person trying to execute the task may not even be an R
+user.
+
+What can we do instead? We can use the `here` package, [as Jenny Bryan
+recommends doing
+here](https://www.tidyverse.org/blog/2017/12/workflow-vs-script/). Or,
+similarly, we can use `git rev-parse --show-toplevel`. For example, here is a
+recent Makefile of mine. The goal of this task is to take some simulated "ground
+truth" data generated in an earlier task, and sample from it multiple times --
+mimicking the process of different groups on the ground collecting evidence of
+human rights abuses:
+
+```
+# Authors:     TS
+# Maintainers: TS
+# Copyright:   2019, HRDAG, GPL v2 or later
+# =========================================
+# squareland/generate-reports/Makefile
+
+HERE := $(shell git rev-parse --show-toplevel)
+TRUTH := $(HERE)/generate-ground-truth/output/truth.feather
+
+.PHONY: all clean
+
+all: output/reports.feather
+
+clean: 
+		-rm -r output/*
+
+output/reports.feather: \
+		src/observe.R \
+		$(TRUTH)
+	Rscript --vanilla $< \
+			--input=$(TRUTH) \
+			--seed=19481210 \
+			--nsource=4 \
+			--reports=$@
+
+# done.
+```
+
+I'm able to effectively specify an absolute path for the input file, without
+fixing my script to my own personal directory structure.
+
+So when to use `here::here()` and when to use `git rev-parse --show-toplevel`?
+`here::here()` is more flexible: `git rev-parse` requires the project to be a
+git repository, while `here::here()` can determine a project root for git
+repositories as well as RStudio projects. Furthermore, if you add an empty file
+called `.here` to the root of your project, `here::here()` will use that to
+determine the project root, without needing git or Rstudio. For this example, my
+thought process went like this: this is a git repository, so the added
+flexibility is not necessary. Given that anyone running the code would have
+first had to clone the git repository, requiring `git` as a project dependency
+feels lighter weight than requiring the `here` R package. The solution you
+choose will depend on your own context.
+
+## 2. The zombie workspace
+
+```
+Save workspace image? [y/n/c]:
+```
+
+Working on a given task may take days or weeks. Especially if some step in a
+task takes a long time -- such as reading in a large text file, or performing
+some expensive string calculations on every data element -- it's tempting to
+save your workspace as you go, so that every time you return to work on the
+project, you're able to start up where you last left off, without having to
+re-run some time-consuming code.
+
+But an R workspace, saved in the course of an interactive session, may include a
+number of objects for which no code has been saved. When I'm working with an
+editor and an interactive R console, I often drop into the console to directly
+experiment with some code that I'm not sure will work. If that experimentation
+results in an object being saved in my workspace, and I continue saving and
+re-loading my workspace to continue working on a task, I may end up relying on
+an object that, if the script were run from a fresh R session, would not exist.
+
+This sort of [hidden
+state](https://towardsdatascience.com/the-case-against-the-jupyter-notebook-d4da17e97243)
+makes work unreplicatable and can be the source of serious bugs that are
+difficult to track down and fix. It affects not just REPL-based developers, but
+also Jupyter users -- in the linked example, they describe a developer running
+code from a later cell that updates a variable value, then hopping back up to
+run code in an earlier cell. The results of that earlier cell now depend on code
+that does not appear until further down.
+
+Rather than saving your workspace, start fresh R sessions. When testing that
+code works, run it via the Makefile (I'll usually do a round of `make clean`,
+which removes any output from the task, and then `make`, effectively re-building
+the task from scratch). If some piece of the script takes a long time to run,
+which is slowing down your ability to develop, spin that piece into its own
+task. Read in a text file, get all of the column types right, and then write the
+output in a binary format that is fast to read/write. The next task can start by
+reading in the binary file.
+
+### An aside about data file formats
+
+The choice of format when writing data to disk depends on a number of factors.
+Here are a few that come up routinely for us, and when we reach for each of them.
+
+- csv or csv.gz: For data that will be used outside of a project, we prefer text
+  formats (pipe-delimited text files, to be precise) to binary file formats. The
+  useful life of a project tends to be quite long, so that projects can easily
+  outlive specific file formats. Plain delimited text files, on the other hand,
+  are delightfully robust to technological change. If the data is taking up too
+  much disk space (which can make it difficult to share across a network, among
+  other things), you can write the data to a compressed file instead. For
+  example, in R:
+
+```{r, eval = FALSE}
+output_file <- gzfile("myoutput.csv.gz")
+write.table(mydata, file = output_file,
+            sep = "|", na = "",
+            row.names = FALSE)
+```
+
+The three main shortcomings of delimited text are that (1) it can be slow to
+read and write (though speedy options such as `data.table::fread` and
+`data.table::fwrite` make this less of an issue), (2) there is no built-in,
+consistent way to deal with missing values -- anyone wanting to read in your
+data has to be aware of the convention you use, and (3) it doesn't store
+information about column types (character, numeric, date, etc.), so you need to
+be sure you're reading things in correctly every time you import the data. If
+this data is a final product, or will be reviewed a lot on its own, then for the
+reasons stated above text is probably still the way to go. In some cases,
+though, data is only written to disk as an intermediate step. In these cases,
+you may opt for a binary format. Here are the two I end up using the most often
+and when I reach for each one:
+
+- rds or rds.gz: If I know that the only downstream tasks that will consume the
+  data are also written in R, then R's RDS file format has a lot to offer:
+  reading and writing is quick, missing values and variable types are preserved
+  during the reading/writing process, and we have the flexibility to store
+  structures that aren't data frames (lists, environments, functions, and so
+  forth). On its own, the RDS format can take up more room than a plain
+  delimited text file, but `base::saveRDS` (and `readr::write_rds`) includes an
+  option to save to a compressed file.
+- [feather](https://cran.r-project.org/web/packages/feather/index.html): feather
+  is a nice binary format for cross-language collaborations. Feather files
+  correctly handle missing values and retain information about column types, and
+  are quick to read and write. The data takes more space on disk than a text
+  file would, but can be read in a variety of languages including R, Python, and
+  Julia.
+
+## 3. The manual unit test
+
+R code developed interactively will sometimes contain code that looks like this:
+
+```{r, eval = FALSE}
+cleaned_data <- process(raw_data)
+
+cleaned_data
+table(cleaned_data$category_code)
+```
+
+This code makes sense from the standpoint of interactive development. We'll
+usually include lines like that because we're checking that `process` still
+works as expected, or that our logic to standardize category codes captured all
+of the variations that appeared in `raw_data`. But code like that in a script
+that is called in batch mode via `Rscript`, for instance from a Makefile, will
+just print output to the screen without stopping for you to review. It adds
+nothing to the script, and if for some reason `process` is not working as
+expected, you may not find out unless/until you find some weird results
+downstream.
+
+To make this code safe for production, we can step back and review why those two
+lines of code, that print output to the screen but don't produce or modify
+anything, exist. In fact, they exist as informal unit tests. Interactively, I am
+checking that the number of rows and columns in `cleaned_data` are as expected,
+or that `category_code` only takes the expected values. Knowing that, I'll
+replace this bit of prototyping code with something like:
+
+```{r, eval = FALSE}
+cleaned_data <- process(raw_data)
+
+stopifnot(nrow(cleaned_data) == 7926)
+stopifnot(ncol(cleaned_data) == 14)
+stopifnot(setequal(cleaned_data$category_code, c("A", "B", "C")))
+```
+
+Now, every time this task produces some output, I'll know that `cleaned_data`
+looks the way I expect it to, and I won't have any unexpected surprises
+downstream. If any processing steps do not go as planned, the task will not
+produce any output, which means that no downstream task will be able to do
+anything until we've debugged. This is great! Having a loud error crash
+everything and refuse to continue until we've debugged is infinitely preferable
+to having code that runs without errors and silently produces something
+incorrect. If you can further craft your error messages in a way that [helps the
+reader more easily identify the
+problem](https://style.tidyverse.org/error-messages.html), even better! My error
+messages often look something like this:
+
+```{r, eval = FALSE}
+expected <- 7926
+actual <- nrow(cleaned_data)
+
+if (expected != actual)
+    stop("Expected ", expected, " rows in cleaned_data, but got ", actual)
+```
+
+That way, if there is a problem when I run `make`, I'll see a message like:
+
+> Error: Expected 7926 rows in cleaned_data, but got 9134.
+
+That gives me some starting points for debugging.
+
+## 4. The stream-of-consciousness coding style
+
+> It works! Now quickly save and close before I screw anything up.
+
+A lot of us data analysts came to coding after first spending time using
+predominantly GUI tools, such as Excel and SPSS. Sometimes our scripts can
+betray that history, as they come to look a lot like text-based recordings of
+every single "button" we pushed in the course of producing the analysis:
+
+```{r, eval = FALSE}
+library(dplyr)
+library(stringr)
+library(somePackageIHeardAbout)
+
+mydata <- read.csv("input/mydata.csv")
+
+yrs <- unique(mydata$year)
+
+mydata <- mydata %>% filter(type %in% c("A", "C")) %>%
+    select(name, month, year, address, type) %>%
+    mutate(name = str_to_upper(name), name = str_trim(name)) %>%
+    mutate(name = str_to_lower(name), name = str_replace_all(name, "\\s+", " "),
+           address = str_to_lower(address), address = str_replace_all(address, "\\s+", " "))
+
+# TODO: check if any other months are misspelled in the original data
+mydata <- mydata %>%
+    mutate(year = as.integer(year), month = ifelse(month == "Agust", "August", month),
+           month = ifelse(month == "Dec", "December", month))
+
+saveRDS(mydata, "output/cleandata.rds")
+```
+
+Now, this code may satisfy our definition of reproducibility. But it is going to
+be very hard to audit. At the end of the process, is `name` lower- or
+upper-case? What is the purpose of the `yrs` object? Does
+`somePackageIHeardAbout` ever get used? And as a script like this one gets
+longer and longer, it becomes increasingly difficult to see clearly what the
+script is doing, as everything blurs into a jumble of string-manipulations and
+one-off fixes.
+
+As with any writing, good readable code will often require you to re-visit and
+re-organize and ruthlessly edit. The goal is not a video recording of every
+button you pressed to get some output, it is to describe in a human-readable way
+how the input becomes the output, and to provide instructions for the machine to
+produce that transformation. So after reviewing the above code with an editor's
+eye, I might end up with:
+
+```{r, eval = FALSE}
+library(dplyr)
+library(stringr)
+
+####
+mydata <- read.csv("input/mydata.csv")
+OK_TYPES <- c("A", "C")
+####
+
+####
+clean_string <- function(string) {
+    out <- str_trim(string)
+    out <- str_to_lower(out)
+    out <- str_replace_all(out, "\\s+", " ")
+    out
+}
+
+fix_month <- function(month) {
+    GOOD_MONTHS <- c("January", "February", "March",
+                     "April", "May", "June", "July",
+                     "August", "September", "October",
+                     "November", "December")
+
+    fixed_month <- case_when(month == "Agust" ~ "August",
+                             month == "Dec" ~ "December",
+                             TRUE ~ month)
+
+    stopifnot(all(fixed_month %in% GOOD_MONTHS))
+    fixed_month
+}
+####
+
+mydata <- mydata %>%
+    filter(type %in% OK_TYPES) %>%
+    select(name, month, year, address, type) %>%
+    mutate(name    = clean_string(name)
+           address = clean_string(address),
+           year    = as.integer(year),
+           month   = fix_month(month))
+
+saveRDS(mydata, "output/cleandata.rds")
+```
+
+Note that the goal of editing wasn't necessarily to make the script shorter, or
+even to improve its performance. It was just to make it easier for a human being
+to follow. As the saying goes, [programs must be written for people to read, and
+only incidentally for machines to
+execute.](https://mitpress.mit.edu/sites/default/files/sicp/full-text/book/book-Z-H-7.html#%_chap_Temp_4)
