@@ -13,7 +13,9 @@ clean:
 		-rm -r output/*
 
 output/harmful.html: \
-		src/harmful.Rmd
+		src/harmful.Rmd \
+		src/header.html \
+		input/hrdag_ID_horiz_w-desc-sdahrj_rgb.png
 	-rm src/harmful.html
 	Rscript --vanilla -e "rmarkdown::render('$<')"
 	mv src/harmful.html $@

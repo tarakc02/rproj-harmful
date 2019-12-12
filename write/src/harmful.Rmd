@@ -6,15 +6,17 @@ date: 9 December 2019
 output:
     html_document:
         toc: true
+        includes:
+            before_body: header.html
 ---
 
 Note: some of the advice in this post echoes that of Jenny Bryan in [this
 excellent article](https://www.tidyverse.org/blog/2017/12/workflow-vs-script/).
 One difference is that we treat each discrete task as a self-contained piece,
-whereas she treats the entire project as one unit.
-
-Members of our team prefer to code in different languages. This post is written
-from the perspective of a (primarily) R user on a multilingual team.
+whereas she treats the entire project as one unit. Another distinction is that
+for us, a given project usually isn't all written in R. Members of our team
+prefer to code in different languages. This post is written from the perspective
+of a (primarily) R user on a multilingual team.
 
 # Background
 
@@ -52,9 +54,9 @@ and instructions for producing output recorded in the Makefile.  Project
 structures may become more complicated as tasks come to depend on multiple
 upstream tasks as inputs, or are broken up into discrete sub-tasks, and so on.
 
-This project style, largely developed by [Scott
+This project style, largely developed by Drs. [Scott
 Weikart](https://hrdag.org/people/scott-weikart-phd/) and [Jeff
-Klingner](https://hrdag.org/people/jeff-klingner-phd/), is not only
+Klingner](https://hrdag.org/people/jeff-klingner-phd/) around 2007, is not only
 self-documenting and easy to maintain, it also facilitates collaboration for us.
 We are a multilingual shop, with much of our code pretty evenly split between R
 and Python, along with a dollop of bash and smatterings of Julia, SQL, C,
@@ -70,13 +72,12 @@ post](https://bost.ocks.org/mike/make/) from Mike Bostock.
 Two of our highest priorities when organizing project code are for the code to
 be:
 
-1. Reproducible: Given the original input data, anyone should be able to pick up
-   the project and re-create the output (whether that is a written report, some
-   charts, a new data set, or what have you).
-2. Auditable: If anything in the output looks surprising or seems wrong, I
-   should be able to trace that output back through every transformation and
-   modeling choice, to see exactly how the original input data resulted in that
-   output.
+- Reproducible: Given the original input data, anyone should be able to pick up
+  the project and re-create the output (whether that is a written report, some
+  charts, a new data set, or what have you).
+- Auditable: If anything in the output looks surprising or seems wrong, I should
+  be able to trace that output back through every transformation and modeling
+  choice, to see exactly how the original input data resulted in that output.
 
 # Definitions
 
@@ -113,22 +114,22 @@ tasked with reproducing or auditing your code is often your future self.
 Whenever code reads in some data from disk, or writes anything out to disk, we
 face a reproducibility-related challenge: 
 
-1. Code that relies on a relative filename and works in an interactive session,
-   such as `read.csv("mydata.csv")`, depends on what the working directory is at
-   the time it is run. That working directory may be set automatically based on
-   how the R session was initiated, meaning that you can run the exact same code
-   on the exact same machine with the only difference being where you started
-   your R session, and sometimes it will produce the correct output and
-   sometimes it won't, which fails any reasonable definition of reproducibility.
-   Or alternatively it might be set explicitly using `setwd`, which is not only
-   inelegant, but also runs into problem (2).
+- Code that relies on a relative filename and works in an interactive session,
+  such as `read.csv("mydata.csv")`, depends on what the working directory is at
+  the time it is run. That working directory may be set automatically based on
+  how the R session was initiated, meaning that you can run the exact same code
+  on the exact same machine with the only difference being where you started
+  your R session, and sometimes it will produce the correct output and sometimes
+  it won't, which fails any reasonable definition of reproducibility.  Or
+  alternatively it might be set explicitly using `setwd`, which is not only
+  inelegant, but also runs into problem (2).
 
-2. Code that relies on an absolute filename, such as
-   `read.csv("/Users/tshah/projects/myproject/import/input/mydata.csv")`,
-   depends on where the project happens to be on my machine. If I share the
-   project with anyone else, that code that works for me will result in a "No
-   such file or directory" error for anyone else, again failing most definitions
-   of reproducibility.
+- Code that relies on an absolute filename, such as
+  `read.csv("/Users/tshah/projects/myproject/import/input/mydata.csv")`, depends
+  on where the project happens to be on my machine. If I share the project with
+  anyone else, that code that works for me will result in a "No such file or
+  directory" error for anyone else, again failing most definitions of
+  reproducibility.
 
 Many RStudio users have taken to the .Rproj solution -- share the project
 including the .Rproj file, and then as long as anyone wanting to run the script
@@ -138,23 +139,23 @@ case, since each task is its own self-contained project, perhaps we can extend
 that practice, and have an RStudio project replete with .Rproj file for every
 task?
 
-But that approach doesn't really solve our problem. First of all, it's specific
-to R. Recall that different tasks, or even bits of code within tasks, may be
-written in a number of different languages. Furthermore, given that our own
-definition of reproducibility included being able to run the task via `make`, we
-haven't met our standard for reproducibility. In fact, this solution *makes
-RStudio a project dependency*. That is a high cost to pay, especially since, as
-mentioned above, the person trying to execute the task may not even be an R
-user.
-
-What can we do instead? We can use the `here` package, [as Jenny Bryan
-recommends doing
-here](https://www.tidyverse.org/blog/2017/12/workflow-vs-script/). Or,
-similarly, we can use `git rev-parse --show-toplevel`. For example, here is a
-recent Makefile of mine. The goal of this task is to take some simulated "ground
-truth" data generated in an earlier task, and sample from it multiple times --
-mimicking the process of different groups on the ground collecting evidence of
-human rights abuses:
+It is easy to forget, as an RStudio user, that not all of your collaborators use
+RStudio, or even code in R. The Rproj solution is specific to RStudio users.
+Furthermore, given that our own definition of reproducibility included being
+able to run the task via `make`, we haven't met our standard for
+reproducibility. In fact, this solution *makes RStudio a project dependency*.
+That is a high cost to pay, especially since, as mentioned above, the person
+trying to execute the task may not even be an R user. With the [here
+package](https://cran.r-project.org/package=here), it might seem like we can
+have all the benefits of .Rproj without the downside of requiring interactive
+execution and/or RStudio. But we'd like to have a solution that works regardless
+of programming language, and it feels like a bit much to ask a Python developer
+to include calls to R from inside their code just to get the paths right. That's
+one reason I've been using `git rev-parse --show-toplevel`.  For example, here
+is a recent Makefile of mine. The goal of this task is to take some simulated
+"ground truth" data generated in an earlier task, and sample from it multiple
+times -- mimicking the process of different groups on the ground collecting
+evidence of human rights abuses:
 
 ```
 # Authors:     TS
@@ -188,17 +189,15 @@ output/reports.feather: \
 I'm able to effectively specify an absolute path for the input file, without
 fixing my script to my own personal directory structure.
 
-So when to use `here::here()` and when to use `git rev-parse --show-toplevel`?
+Besides the language thing, there are some other differences between
+`here::here()` and `git rev-parse --show-toplevel` that are worth knowing about.
 `here::here()` is more flexible: `git rev-parse` requires the project to be a
 git repository, while `here::here()` can determine a project root for git
 repositories as well as RStudio projects. Furthermore, if you add an empty file
 called `.here` to the root of your project, `here::here()` will use that to
-determine the project root, without needing git or Rstudio. For this example, my
-thought process went like this: this is a git repository, so the added
-flexibility is not necessary. Given that anyone running the code would have
-first had to clone the git repository, requiring `git` as a project dependency
-feels lighter weight than requiring the `here` R package. The solution you
-choose will depend on your own context.
+determine the project root, without needing git or Rstudio. Given that we always
+manage our code in git repositories, the `git rev-parse` solution felt like the
+best fit. The solution you choose will depend on your own context.
 
 ## 2. The zombie workspace
 
@@ -235,58 +234,12 @@ code works, run it via the Makefile (I'll usually do a round of `make clean`,
 which removes any output from the task, and then `make`, effectively re-building
 the task from scratch). If some piece of the script takes a long time to run,
 which is slowing down your ability to develop, spin that piece into its own
-task. Read in a text file, get all of the column types right, and then write the
-output in a binary format that is fast to read/write. The next task can start by
-reading in the binary file.
-
-### An aside about data file formats
-
-The choice of format when writing data to disk depends on a number of factors.
-Here are a few that come up routinely for us, and when we reach for each of them.
-
-- csv or csv.gz: For data that will be used outside of a project, we prefer text
-  formats (pipe-delimited text files, to be precise) to binary file formats. The
-  useful life of a project tends to be quite long, so that projects can easily
-  outlive specific file formats. Plain delimited text files, on the other hand,
-  are delightfully robust to technological change. If the data is taking up too
-  much disk space (which can make it difficult to share across a network, among
-  other things), you can write the data to a compressed file instead. For
-  example, in R:
-
-```{r, eval = FALSE}
-output_file <- gzfile("myoutput.csv.gz")
-write.table(mydata, file = output_file,
-            sep = "|", na = "",
-            row.names = FALSE)
-```
-
-The three main shortcomings of delimited text are that (1) it can be slow to
-read and write (though speedy options such as `data.table::fread` and
-`data.table::fwrite` make this less of an issue), (2) there is no built-in,
-consistent way to deal with missing values -- anyone wanting to read in your
-data has to be aware of the convention you use, and (3) it doesn't store
-information about column types (character, numeric, date, etc.), so you need to
-be sure you're reading things in correctly every time you import the data. If
-this data is a final product, or will be reviewed a lot on its own, then for the
-reasons stated above text is probably still the way to go. In some cases,
-though, data is only written to disk as an intermediate step. In these cases,
-you may opt for a binary format. Here are the two I end up using the most often
-and when I reach for each one:
-
-- rds or rds.gz: If I know that the only downstream tasks that will consume the
-  data are also written in R, then R's RDS file format has a lot to offer:
-  reading and writing is quick, missing values and variable types are preserved
-  during the reading/writing process, and we have the flexibility to store
-  structures that aren't data frames (lists, environments, functions, and so
-  forth). On its own, the RDS format can take up more room than a plain
-  delimited text file, but `base::saveRDS` (and `readr::write_rds`) includes an
-  option to save to a compressed file.
-- [feather](https://cran.r-project.org/web/packages/feather/index.html): feather
-  is a nice binary format for cross-language collaborations. Feather files
-  correctly handle missing values and retain information about column types, and
-  are quick to read and write. The data takes more space on disk than a text
-  file would, but can be read in a variety of languages including R, Python, and
-  Julia.
+task. For instance, say your script starts by reading in a large text file and
+you are tempted to save your workspace in order to avoid waiting for the file to
+load every time you update your code. Create a new task that reads in the text
+file, gets all of the column types right, and then writes the output in a binary
+format that is fast to read/write.  The next task can start by reading in the
+binary file.
 
 ## 3. The manual unit test
 
@@ -445,3 +398,15 @@ even to improve its performance. It was just to make it easier for a human being
 to follow. As the saying goes, [programs must be written for people to read, and
 only incidentally for machines to
 execute.](https://mitpress.mit.edu/sites/default/files/sicp/full-text/book/book-Z-H-7.html#%_chap_Temp_4)
+
+# Acknowledgements
+
+This post is built from HRDAG's collective accumulated wisdom, picked up over
+decades of managing complex, long-lived, collaborative data analysis projects.
+It reflects that experience and countless conversations. The project structure
+discussed in this post, with discrete tasks using Makefiles, was developed by
+Drs. [Scott Weikart](https://hrdag.org/people/scott-weikart-phd/) and [Jeff
+Klingner](https://hrdag.org/people/jeff-klingner-phd/) and formalized around
+2007. I'm particularly grateful to [Dr. Patrick
+Ball](https://hrdag.org/people/patrick-ball-phd/), who motivated the post,
+helped me think through the concepts, and provided valuable feedback.
