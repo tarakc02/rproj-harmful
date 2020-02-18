@@ -104,15 +104,15 @@ As stated above, a concrete definition for "production" for us can be whether
 the code can be run on our in-house Linux server via its Makefiles. If that
 represents the letter of the law, then the spirit can be captured by the concept
 of empathy for the person tasked with reproducing or auditing the code. This
-empathy is valuble to cultivate because, if for no other reason, the person
+empathy is valuable to cultivate because, if for no other reason, the person
 tasked with reproducing or auditing your code is often your future self.
 
 # Common issues when moving from prototyping to production
 
 ## 1. The working directory thing
 
-Whenever code reads in some data from disk, or writes anything out to disk, we
-face a reproducibility-related challenge: 
+Whenever code reads in some data from a drive, or writes anything out to a
+drive, we face a reproducibility-related challenge:
 
 - Code that relies on a relative filename and works in an interactive session,
   such as `read.csv("mydata.csv")`, depends on what the working directory is at
@@ -222,7 +222,7 @@ an object that, if the script were run from a fresh R session, would not exist.
 
 This sort of [hidden
 state](https://towardsdatascience.com/the-case-against-the-jupyter-notebook-d4da17e97243)
-makes work unreplicatable and can be the source of serious bugs that are
+makes work unreplicable and can be the source of serious bugs that are
 difficult to track down and fix. It affects not just REPL-based developers, but
 also Jupyter users -- in the linked example, they describe a developer running
 code from a later cell that updates a variable value, then hopping back up to
@@ -343,12 +343,12 @@ longer and longer, it becomes increasingly difficult to see clearly what the
 script is doing, as everything blurs into a jumble of string-manipulations and
 one-off fixes.
 
-As with any writing, good readable code will often require you to re-visit and
-re-organize and ruthlessly edit. The goal is not a video recording of every
-button you pressed to get some output, it is to describe in a human-readable way
-how the input becomes the output, and to provide instructions for the machine to
-produce that transformation. So after reviewing the above code with an editor's
-eye, I might end up with:
+As with any piece of writing, good readable code will often require you to
+re-visit and re-organize and ruthlessly edit. The goal is not a video recording
+of every button you pressed to get some output, it is to describe in a
+human-readable way how the input becomes the output, and to provide instructions
+for the machine to produce that transformation. So after reviewing the above
+code with an editor's eye, I might end up with:
 
 ```{r, eval = FALSE}
 library(dplyr)
